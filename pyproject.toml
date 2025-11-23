@@ -1,0 +1,16 @@
+[project]
+name = "transcript-tools"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+transcript-slim = "transcript_tools.segment_cli:main"
+transcript-group = "transcript_tools.group_cli:main"
+transcript-triage = "transcript_tools.triage_cli:main"
