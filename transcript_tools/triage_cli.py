@@ -26,12 +26,21 @@ def main(argv: Optional[list[str]] = None) -> None:
         type=Path,
         help="Path where the updated grouped JSON should be written.",
     )
+    parser.add_argument(
+        "--start-group",
+        type=int,
+        default=1,
+        help=(
+            "1-based index of the group at which to start triage. "
+            "Defaults to 1 (the first group)."
+        ),
+    )
 
     args = parser.parse_args(argv)
 
     try:
         groups = load_groups(args.input)
-        should_write = run_triage(groups)
+        should_write = run_triage(groups, start_group=args.start_group)
 
         if not should_write:
             print("Quitting without writing any changes.")
