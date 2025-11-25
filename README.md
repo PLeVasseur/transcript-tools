@@ -325,4 +325,57 @@ following group:
     [0] Yeah, everyone is so excited about Rust will run everywhere, but there's a maintenance cost there that is almost exponential in scope.
 ```
 
+### transcript-md
+
+This is a one-shot script, will simply get the output.
+
+```shell
+uv run transcript-md \
+  ../interview-transcript/interview-audio.triage.json \
+  ../interview-transcript/interview-audio.md \
+```
+
+### diff-reviewer.html
+
+Useful for comparing diffs between, say, the transcription as collected vs revisions made by an LLM.
+
+#### Generating diffs
+
+For this we use [PanDiff] with the following configuration:
+
+```shell
+pandiff \
+  ../interview-transcript/interview-audio.before-revision.md \
+  ../interview-transcript/interview-audio.after-revision.md \
+  > ../interview-transcript/before-after.critic
+```
+
+#### Working through diffs
+
+Double click on `diff-reviewer.html`, it'll open in a browser window.
+
+First, load the `.critic` file by clicking on `Choose File`:
+
+![Opening the diff / .critic file](./content/diff-tool-step-1.png)
+
+Then, work your way through the diffs clicking to accept.
+
+Note that all of the following are supported:
+- additions
+- substitutions
+- subtractions
+
+![Using the diff tool](./content/diff-tool-step-2.png)
+
+Note how the change being accepted results in a muted green being used.
+
+Finally, click `Export Markdown` to download the Markdown file.
+
+![Using the diff tool](./content/diff-tool-step-3.png)
+
+Note that it's possible to pause mid-way through by exporting, then resume
+diffing again later by loading the exported Markdown file as "before"
+next time.
+
 [whisperX]: https://github.com/m-bain/whisperX
+[PanDiff]: https://github.com/davidar/pandiff

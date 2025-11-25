@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CriticMarkup Review Tool (PanDiff)</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: #151515;
+      color: #f5f5f5;
+    }
+
+    main {
+      max-width: 1000px;
+      margin: 1.5rem auto 2.5rem;
+      padding: 0 1rem;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      margin-bottom: 0.5rem;
+    }
+
+    #controls {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      padding: 0.75rem 1rem 1rem;
+      border-radius: 8px;
+      background: #202020;
+      border: 1px solid #333;
+    }
+
+    #controls-line1 {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    label {
+      font-size: 0.9rem;
+      opacity: 0.9;
+    }
+
+    input[type="file"] {
+      font-size: 0.85rem;
+    }
+
+    button {
+      border-radius: 6px;
+      border: 1px solid #444;
+      background: #2b2b2b;
+      color: #f5f5f5;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.12s ease, transform 0.05s ease, border-color 0.12s ease;
+    }
+
+    button:hover:not(:disabled) {
+      background: #3a3a3a;
+      border-color: #666;
+    }
+
+    button:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    #criticRaw {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: 0.82rem;
+      padding: 0.4rem 0.5rem;
+      border-radius: 6px;
+      border: 1px solid #444;
+      background: #151515;
+      color: #f5f5f5;
+      resize: vertical;
+      min-height: 4.5rem;
+    }
+
+    #status {
+      font-size: 0.8rem;
+      opacity: 0.8;
+    }
+
+    #viewer {
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid #333;
+      background: #000;
+    }
+
+    #docContainer {
+      padding: 1.25rem 1.5rem;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      /* IMPORTANT CHANGE: let text flow normally, we insert <br><br> ourselves */
+      white-space: normal;
+      tab-size: 4;
+    }
+
+    /* Change styling */
+
+    .change {
+      cursor: pointer;
+      border-radius: 2px;
+      padding: 0 1px;
+      position: relative;
+    }
+
+    .change::after {
+      content: "";
+      position: absolute;
+      top: -0.25rem;
+      right: -0.15rem;
+      width: 0.25rem;
+      height: 0.25rem;
+      border-radius: 50%;
+      background: #888;
+      opacity: 0.0;
+      transition: opacity 0.12s ease;
+    }
+
+    .change:hover::after {
+      opacity: 0.9;
+    }
+
+    .del-text {
+      background: rgba(231, 76, 60, 0.6);
+      text-decoration: line-through;
+    }
+
+    .ins-text {
+      background: rgba(46, 204, 113, 0.6);
+    }
+
+    .change.accepted .ins-text {
+      background: rgba(46, 204, 113, 0.3);
+    }
+
+    .change.replace.pending .del-text {
+      margin-right: 1px;
+    }
+
+    .change.delete.pending .del-text {
+      background: rgba(231, 76, 60, 0.6);
+    }
+
+    .change.delete.accepted .del-placeholder {
+      font-size: 0.7em;
+      color: #777;
+      border-bottom: 1px dotted #777;
+      vertical-align: baseline;
+    }
+
+    .change.delete.accepted {
+      padding: 0;
+    }
+
+    /* Layout tweaks on small screens */
+    @media (max-width: 700px) {
+      #controls-line1 {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      #docContainer {
+        padding: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>CriticMarkup Review Tool (PanDiff)</h1>
+
+  <section id="controls">
+    <div id="controls-line1">
+      <label>
+        Load CriticMarkup file:
+        <input type="file" id="fileInput" accept=".md,.markdown,.txt,.critic" />
+      </label>
+
+      <button id="parseButton">Parse CriticMarkup</button>
+      <button id="acceptAllButton" disabled>Accept all changes</button>
+      <button id="exportButton" disabled>Export Markdown</button>
+    </div>
+
+    <textarea id="criticRaw"
+              placeholder="Paste PanDiff's CriticMarkup output here (e.g. the result of `pandiff before.md after.md`)."></textarea>
+    <div id="status">No document loaded yet.</div>
+  </section>
+
+  <section id="viewer">
+    <div id="docContainer">
+      <!-- Rendered document will appear here -->
+      <em style="opacity:0.7;">Load a CriticMarkup diff to start reviewing.</em>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  const fileInput = document.getElementById('fileInput');
+  const parseButton = document.getElementById('parseButton');
+  const acceptAllButton = document.getElementById('acceptAllButton');
+  const exportButton = document.getElementById('exportButton');
+  const criticRaw = document.getElementById('criticRaw');
+  const docContainer = document.getElementById('docContainer');
+  const statusEl = document.getElementById('status');
+
+  let nodes = [];
+  let changes = {};
+  let filenameBase = 'output';
+
+  // -------------- File loading --------------
+
+  fileInput.addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    filenameBase = file.name.replace(/\.[^.]+$/, '') || 'output';
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      criticRaw.value = e.target.result;
+      parseAndRender();
+    };
+    reader.readAsText(file);
+  });
+
+  parseButton.addEventListener('click', () => {
+    parseAndRender();
+  });
+
+  function parseAndRender() {
+    const text = criticRaw.value;
+    if (!text.trim()) {
+      alert('Please paste CriticMarkup text or load a file first.');
+      return;
+    }
+    const result = parseCriticMarkup(text);
+    nodes = result.nodes;
+    changes = result.changes;
+
+    const total = Object.keys(changes).length;
+    statusEl.textContent = total
+      ? `${total} change${total === 1 ? '' : 's'} found. Click a highlighted segment to accept it.`
+      : 'No CriticMarkup changes found; showing plain text.';
+
+    exportButton.disabled = false;
+    acceptAllButton.disabled = !total;
+
+    renderDocument();
+  }
+
+  // -------------- CriticMarkup parsing --------------
+
+  function parseCriticMarkup(text) {
+    const pattern = /{~~([\s\S]*?)~>([\s\S]*?)~~}|{\+\+([\s\S]*?)\+\+}|{--([\s\S]*?)--}/g;
+    const outNodes = [];
+    const outChanges = {};
+    let lastIndex = 0;
+    let match;
+    let id = 0;
+
+    while ((match = pattern.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        outNodes.push({
+          type: 'text',
+          text: text.slice(lastIndex, match.index)
+        });
+      }
+
+      if (match[1] !== undefined) {
+        outNodes.push({
+          type: 'replace',
+          id,
+          oldText: match[1],
+          newText: match[2]
+        });
+        outChanges[id] = { type: 'replace', state: 'pending' };
+      } else if (match[3] !== undefined) {
+        outNodes.push({
+          type: 'insert',
+          id,
+          newText: match[3]
+        });
+        outChanges[id] = { type: 'insert', state: 'pending' };
+      } else if (match[4] !== undefined) {
+        outNodes.push({
+          type: 'delete',
+          id,
+          oldText: match[4]
+        });
+        outChanges[id] = { type: 'delete', state: 'pending' };
+      }
+
+      lastIndex = pattern.lastIndex;
+      id++;
+    }
+
+    if (lastIndex < text.length) {
+      outNodes.push({
+        type: 'text',
+        text: text.slice(lastIndex)
+      });
+    }
+
+    return { nodes: outNodes, changes: outChanges };
+  }
+
+  // -------------- Rendering helpers --------------
+
+  function escapeHtml(str) {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  /**
+   * Render text similar to how Markdown paragraphs work:
+   * - Single newline -> space
+   * - Blank line (two+ newlines) -> paragraph break (<br><br>)
+   */
+  function renderInlineText(str) {
+    if (!str) return '';
+    let s = str.replace(/\r\n/g, '\n');
+    const blocks = s.split(/\n\n+/);   // paragraphs
+    return blocks.map((block, index) => {
+      const collapsed = block.replace(/\n/g, ' '); // soft breaks -> space
+      const escaped = escapeHtml(collapsed);
+      return index === 0 ? escaped : '<br><br>' + escaped;
+    }).join('');
+  }
+
+  // -------------- Rendering --------------
+
+  function renderDocument() {
+    const html = nodes.map(renderNode).join('');
+    docContainer.innerHTML = html;
+    attachChangeClickHandler();
+    updateStatusCounts();
+  }
+
+  function renderNode(node) {
+    if (node.type === 'text') {
+      return renderInlineText(node.text);
+    }
+
+    const change = changes[node.id];
+    const state = change ? change.state : 'pending';
+    const id = node.id;
+
+    if (node.type === 'insert') {
+      if (state === 'accepted') {
+        return `<span class="change insert accepted" data-change-id="${id}">
+                  <span class="ins-text">${renderInlineText(node.newText)}</span>
+                </span>`;
+      } else {
+        return `<span class="change insert pending" data-change-id="${id}">
+                  <span class="ins-text">${renderInlineText(node.newText)}</span>
+                </span>`;
+      }
+    }
+
+    if (node.type === 'delete') {
+      if (state === 'accepted') {
+        return `<span class="change delete accepted" data-change-id="${id}">
+                  <span class="del-placeholder" title="Deletion accepted – click to undo">␡</span>
+                </span>`;
+      } else {
+        return `<span class="change delete pending" data-change-id="${id}">
+                  <span class="del-text">${renderInlineText(node.oldText)}</span>
+                </span>`;
+      }
+    }
+
+    if (node.type === 'replace') {
+      if (state === 'accepted') {
+        return `<span class="change replace accepted" data-change-id="${id}">
+                  <span class="ins-text">${renderInlineText(node.newText)}</span>
+                </span>`;
+      } else {
+        return `<span class="change replace pending" data-change-id="${id}">
+                  <span class="del-text">${renderInlineText(node.oldText)}</span>
+                  <span class="ins-text">${renderInlineText(node.newText)}</span>
+                </span>`;
+      }
+    }
+
+    return '';
+  }
+
+  function attachChangeClickHandler() {
+    docContainer.onclick = (event) => {
+      const target = event.target.closest('[data-change-id]');
+      if (!target) return;
+
+      const id = target.getAttribute('data-change-id');
+      const change = changes[id];
+      if (!change) return;
+
+      change.state = change.state === 'accepted' ? 'pending' : 'accepted';
+      renderDocument();
+    };
+  }
+
+  function updateStatusCounts() {
+    const total = Object.keys(changes).length;
+    if (!total) return;
+    const accepted = Object.values(changes).filter(c => c.state === 'accepted').length;
+    statusEl.textContent = `${accepted}/${total} changes accepted. Click a highlighted region to toggle.`;
+  }
+
+  // -------------- Accept all & Export --------------
+
+  acceptAllButton.addEventListener('click', () => {
+    Object.values(changes).forEach(c => { c.state = 'accepted'; });
+    renderDocument();
+  });
+
+  exportButton.addEventListener('click', () => {
+    const markdown = buildMergedMarkdown();
+    const blob = new Blob([markdown], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filenameBase + '-merged.md';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 0);
+  });
+
+  function buildMergedMarkdown() {
+    let result = '';
+    for (const node of nodes) {
+      if (node.type === 'text') {
+        result += node.text;
+        continue;
+      }
+
+      const change = changes[node.id] || { state: 'pending' };
+      const state = change.state;
+
+      if (node.type === 'insert') {
+        if (state === 'accepted') {
+          result += node.newText;
+        }
+      } else if (node.type === 'delete') {
+        if (state !== 'accepted') {
+          result += node.oldText;
+        }
+      } else if (node.type === 'replace') {
+        result += (state === 'accepted') ? node.newText : node.oldText;
+      }
+    }
+    return result;
+  }
+})();
+</script>
+</body>
+</html>
